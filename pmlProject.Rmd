@@ -1,0 +1,93 @@
+---
+title: "Prediction Assignment Writeup"
+author: "JC"
+date: "7/31/2019"
+output: html_document
+---
+
+## Summary
+   The main idea of this project was using data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants to predict the manner in which they did the exercise. To reach the goal, fist explored data and then built the model, using cross validation, expressing the expected out-of-sample error and reasons of choosing the prediction model. Finally,used the prediction model to predict 20 different test cases.
+
+
+## Processing Data and Exploratory Analysis
+```{r , echo = TRUE}
+library(knitr)
+library(caret)
+#Read data
+download.file("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv",destfile = "pml-traininig.csv")
+download.file("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv",destfile = "pml-testing.csv")
+traindata <- read.csv("pml-traininig.csv",na.strings=c("NA","#DIV/0!",""))
+testdata <- read.csv("pml-testing.csv",na.strings=c("NA","#DIV/0!",""))
+#clean NA, near zero values, and ID variables 
+traindata <-traindata[,colSums(is.na(traindata)) == 0]
+testdata <-testdata[,colSums(is.na(testdata)) == 0]
+nzv <- nearZeroVar(traindata)
+traindata <- traindata[,-nzv]
+traindata <- traindata[,-(1:6)]
+```
+
+[Correlation Analysis]
+   Perform correction analysis and check if there was any highly correlated preditors. If any, deleted the variables.
+```{r , echo = TRUE}
+library(corrplot)
+cor <- abs(cor(traindata[,-53]))
+corrplot(cor)
+cor08 <- findCorrelation(cor, cutoff=0.8)
+traindata <- traindata[, -cor08]
+```
+
+[Cross Validation]
+   Create data partition in 70,30 ratio. 
+```{r , echo = TRUE}
+set.seed(1234)
+train  <- createDataPartition(traindata$classe, p=0.7, list=FALSE)
+training <- traindata[train, ]
+testing  <- traindata[-train, ]
+```
+
+
+## Building Model
+      The target variable was a class variable. Random Forests, Decision Tree and Gradient Boosted were three candidate methods to build prediction model. 
+```{r , echo = TRUE}
+table(training$classe)
+```
+
+1 Random Forests
+```{r , echo = TRUE}
+library(randomForest)
+modrf <- randomForest(classe ~ ., data=training)
+# prediction on testing
+predrf <- predict(modrf, testing)
+RandomForestsAccuracy <- round(confusionMatrix(predrf, testing$classe)$overall[1],3)
+```
+
+2 Decision Tree 
+```{r, echo=TRUE}
+library(rpart)
+modDT <- rpart(classe ~ ., data=training, method="class")
+# prediction on Test dataset
+predDT <- predict(modDT, newdata=testing,type = "class")
+DecTreeAccuracy <- round(confusionMatrix(predDT, testing$classe)$overall[1],3)
+```
+
+3 Gradient Boosted Model
+```{r, echo=TRUE}
+modGBM  <- train(classe ~ ., data=training, method = "gbm", verbose = FALSE,trControl =trainControl(method = "repeatedcv", number = 5, repeats = 1))
+predGBM <- predict(modGBM, newdata=testing)
+GBMAccuracy <-round(confusionMatrix(predGBM, testing$classe)$overall[1],3)
+```
+
+[Accuracy, Expected Out-of-Sample Error and Model Choosing]
+   The Model from random forests method had best accuracy and lowest expected out-of sample error (1-accuracy), which meaned it could provide the best predict values. The random forests model was chosen as prediction model.
+```{r, echo=TRUE}
+t <-data.frame(Model=c("RandomForest","DecisionTree","GradientBoostedModel"),Accuracy=c(RandomForestsAccuracy,DecTreeAccuracy,GBMAccuracy))
+t$Error <-1-t$Accuracy
+kable(t,caption ="Accuracy and Expected Out-of-Sample Error" )
+```
+
+
+## Predict 20 Different Test Cases
+```{r, echo=TRUE}
+predTestdata <- predict(modrf, testdata)
+predTestdata
+```
